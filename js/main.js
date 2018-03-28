@@ -4,7 +4,7 @@
     //variables for data join
     var attrArray = ["total_collisions", "pct_WaTotal", "pct_fatal", "pct_serious", "pct_minor","pct_property", "pct_unknown", "Col_per_licDR", "fatal_perLicDr", "serious_injry_perLicDr" ];
     
-    var expressed = attrArray[0]; //initial attribute
+    var expressed = attrArray[2]; //initial attribute
 
     //begin script when window loads
     window.onload = setMap();
@@ -53,13 +53,57 @@
 
             //join csv data to GeoJSON enumeration units
             washingtonCounties = joinData(washingtonCounties, csvData);
+            
+            //create the color scale
+            var colorScale = makeColorScale(csvData);
 
             //add enumeration units to the map
-            setEnumerationUnits(washingtonCounties, map, path);          
+            setEnumerationUnits(washingtonCounties, map, path, colorScale);          
 
             console.log(washingtonCounties);
+            
+            
         
         }
+    };
+    
+    //function to create color scale generator
+    function makeColorScale(data){
+        var colorClasses = [
+            "#D4B9DA",
+            "#C994C7",
+            "#DF65B0",
+            "#DD1C77",
+            "#980043"
+        ];
+
+        //create color scale generator
+        var colorScale = d3.scaleQuantile()
+            .range(colorClasses);
+
+        //build array of all values of the expressed attribute
+        var domainArray = [];
+        for (var i=0; i<data.length; i++){
+            var val = parseFloat(data[i][expressed]);
+            domainArray.push(val);
+        };
+
+        //assign array of expressed values as scale domain
+        colorScale.domain(domainArray);
+
+        return colorScale;
+    };
+    
+    //function to test for data value and return color
+    function choropleth(props, colorScale){
+        //make sure attribute value is a number
+        var val = parseFloat(props[expressed]);
+        //if attribute value exists, assign a color; otherwise assign gray
+        if (typeof val == 'number' && !isNaN(val)){
+            return colorScale(val);
+        } else {
+            return "#CCC";
+        };
     };
 
     function setGraticule(map, path){
@@ -109,16 +153,19 @@
         return washingtonCounties;
     };
 
-    function setEnumerationUnits(washingtonCounties, map, path){
+    function setEnumerationUnits(washingtonCounties, map, path, colorScale){
     //add washington counties to map
             var counties = map.selectAll(".counties")
                 .data(washingtonCounties)
                 .enter()
                 .append("path")
                 .attr("class", function(d){
-                    return "name " + d.properties.JURISDIC_4;
+                    return "counties " + d.properties.JURISDIC_4;
                 })
-                .attr("d", path);
+                .attr("d", path)
+                .style("fill", function(d){
+                    return choropleth(d.properties,colorScale);
+                });
 
             //examine the reults
             //console.log(washingtonCounties);
