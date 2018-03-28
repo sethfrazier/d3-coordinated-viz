@@ -14,7 +14,7 @@
     
      
         //map frame dimensions
-        var width = 960,
+        var width = window.innerWidth * 0.5,
             height = 460;
     
         //create new svg container for the map
@@ -62,7 +62,8 @@
 
             console.log(washingtonCounties);
             
-            
+            //add coordinated vizualization to the map
+            setChart(csvData, colorScale);
         
         }
     };
@@ -151,6 +152,20 @@
             };
 
         return washingtonCounties;
+    };
+    
+    //function to create coordinated bar chart
+    function setChart(csvData, colorScale){
+    //chart frame dimensions
+    var chartWidth = window.innerWidth*0.425,
+        chartHeight = 460;
+
+    //create a second svg element to hold the bar chart
+    var chart = d3.select("body")
+        .append("svg")
+        .attr("width", chartWidth)
+        .attr("height", chartHeight)
+        .attr("class", "chart");
     };
 
     function setEnumerationUnits(washingtonCounties, map, path, colorScale){
