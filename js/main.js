@@ -5,6 +5,22 @@
     var attrArray = ["total_collisions", "pct_WaTotal", "pct_fatal", "pct_serious", "pct_minor","pct_property", "pct_unknown", "Col_per_licDR", "fatal_perLicDr", "serious_injry_perLicDr" ];
     
     var expressed = attrArray[7]; //initial attribute
+    
+    //chart frame dimensions
+    var chartWidth = window.innerWidth * 0.425,
+        chartHeight = 463,
+        leftPadding = 25,
+        rightPadding = 2,
+        topBottomPadding = 5,
+        chartInnerWidth = chartWidth - leftPadding - rightPadding,
+        chartInnerHeight = chartHeight - topBottomPadding * 2,
+        translate = "translate(" + leftPadding + "," + topBottomPadding + ")";
+        
+    //create a scale to size bars proportionally to frame and for axis
+    var yScale = d3.scaleLinear()
+        .range([453, 0])
+        .domain([0, 450]);
+    
 
     //begin script when window loads
     window.onload = setMap();
@@ -64,6 +80,9 @@
             
             //add coordinated vizualization to the map
             setChart(csvData, colorScale);
+            
+            //dropdown
+            createDropdown(csvData);
         
         }
     };
@@ -137,7 +156,7 @@
                 for (var a=0; a<washingtonCounties.length; a++){
 
                     var geojsonProps = washingtonCounties[a].properties; //the current county geojson properties
-                    var geojsonKey = geojsonProps.JURISDIC_4; //the geojson primary key
+                    var geojsonKey = geojsonProps.JURISDIC; //the geojson primary key
 
                     //where primary keys match, transfer csv data to geojson properties object
                     if (geojsonKey == csvKey){
@@ -156,16 +175,7 @@
     
     //function to create coordinated bar chart
     function setChart(csvData, colorScale){
-        //chart frame dimensions
-        var chartWidth = window.innerWidth * 0.425,
-            chartHeight = 463,
-            leftPadding = 25,
-            rightPadding = 2,
-            topBottomPadding = 5,
-            chartInnerWidth = chartWidth - leftPadding - rightPadding,
-            chartInnerHeight = chartHeight - topBottomPadding * 2,
-            translate = "translate(" + leftPadding + "," + topBottomPadding + ")";
-
+        
         //create a second svg element to hold the bar chart
         var chart = d3.select("body")
             .append("svg")
@@ -180,12 +190,7 @@
             .attr("height", chartInnerHeight)
             .attr("transform", translate);
 
-        //create a scale to size bars proportionally to frame and for axis
-        var yScale = d3.scaleLinear()
-            .range([453, 0])
-            .domain([0, 450]);
-
-        //set bars for each province
+        //set bars for each county
         var bars = chart.selectAll(".bar")
             .data(csvData)
             .enter()
@@ -197,25 +202,20 @@
                 return "bar " + d.JURISDIC;
             })
             .attr("width", chartInnerWidth / csvData.length - 1)
-            .attr("x", function(d, i){
-                return i * (chartInnerWidth / csvData.length) + leftPadding;
-            })
-            .attr("height", function(d, i){
-                return 453 - yScale(parseFloat(d[expressed]));
-            })
-            .attr("y", function(d, i){
-                return yScale(parseFloat(d[expressed])) + topBottomPadding;
-            })
-            .style("fill", function(d){
-                return choropleth(d, colorScale);
-            });
+            .on("mouseover", highlight)
+            .on("mouseout", dehighlight)
+            .on("mousemove", moveLabel);
+        
+        //add style descriptor to each rect
+        var desc = bars.append("desc")
+            .text('{"stroke": "none", "stroke-width": "0px"}');
 
         //create a text element for the chart title
         var chartTitle = chart.append("text")
             .attr("x", 40)
             .attr("y", 40)
             .attr("class", "chartTitle")
-            .text("Number of Variable " + expressed[7] + " in each region");
+            
 
         //create vertical axis generator
         var yAxis = d3.axisLeft()
@@ -234,9 +234,123 @@
             .attr("width", chartInnerWidth)
             .attr("height", chartInnerHeight)
             .attr("transform", translate);
+        
+        //set bar positions, heights, and colors
+        updateChart(bars, csvData.length, colorScale);
+        
     };
     
+    //function to create a dropdown menu for attribute selection
+    function createDropdown(csvData){
+        //add select element
+        var dropdown = d3.select("body")
+            .append("select")
+            .attr("class", "dropdown")
+        .on("change", function(){
+            changeAttribute(this.value,csvData)
+        });
+
+        //add initial option
+        var titleOption = dropdown.append("option")
+            .attr("class", "titleOption")
+            .attr("disabled", "true")
+            .text("Select Attribute");
+
+        //add attribute name options
+        var attrOptions = dropdown.selectAll("attrOptions")
+            .data(attrArray)
+            .enter()
+            .append("option")
+            .attr("value", function(d){ return d })
+            .text(function(d){ return d });
+    };
     
+    //dropdown change listener handler
+    function changeAttribute(attribute, csvData){
+        //change the expressed attribute
+        expressed = attribute;
+
+        //recreate the color scale
+        var colorScale = makeColorScale(csvData);
+
+        //recolor enumeration units
+        var counties = d3.selectAll(".counties")
+            .transition()
+            .duration(1000)
+            .style("fill", function(d){
+                return choropleth(d.properties, colorScale)
+            });
+        
+        //re-sort, resize, and recolor bars
+        var bars = d3.selectAll(".bar")
+            //re-sort bars
+            .sort(function(a, b){
+                return b[expressed] - a[expressed];
+            })
+            .transition()//add animation
+            .delay(function(d,i){
+                return i*20
+            })
+            .duration(500);
+        
+        //call updatechart function to change bars, and colors
+        updateChart(bars, csvData.length, colorScale);
+    };
+    
+    //function to position, size, and color bars in chart
+    function updateChart(bars, n, colorScale){
+        
+        //position bars
+        bars.attr("x", function(d, i){
+                return i * (chartInnerWidth / n) + leftPadding;
+            })
+            //size/resize bars
+            .attr("height", function(d, i){
+                return 453 - yScale(parseFloat(d[expressed]));
+            })
+            .attr("y", function(d, i){
+                return yScale(parseFloat(d[expressed])) + topBottomPadding;
+            })
+            //color/recolor bars
+            .style("fill", function(d){
+                return choropleth(d, colorScale);
+            });
+        //text to chart title
+        var chartTitle = d3.select(".chartTitle")
+            .text("Number of Variable " + expressed[0] + " in each region");
+    };
+    
+     //function to highlight enumeration units and bars
+    function highlight(props){
+        //change stroke
+        var selected = d3.selectAll("." + props.JURISDIC)
+            .style("stroke", "blue")
+            .style("stroke-width", "2");
+        setLabel(props);
+    };
+    
+    //function to reset the element style on mouseout
+    function dehighlight(props){
+        var selected = d3.selectAll("." + props.JURISDIC)
+            .style("stroke", function(){
+                return getStyle(this, "stroke")
+            })
+            .style("stroke-width", function(){
+                return getStyle(this, "stroke-width")
+            });
+
+        function getStyle(element, styleName){
+            var styleText = d3.select(element)
+                .select("desc")
+                .text();
+
+            var styleObject = JSON.parse(styleText);
+
+            return styleObject[styleName];   
+        };
+        d3.select(".infolabel")
+            .remove();
+    };
 
     function setEnumerationUnits(washingtonCounties, map, path, colorScale){
     //add washington counties to map
@@ -245,12 +359,23 @@
                 .enter()
                 .append("path")
                 .attr("class", function(d){
-                    return "counties " + d.properties.JURISDIC_4;
+                    return "counties " + d.properties.JURISDIC;
                 })
                 .attr("d", path)
                 .style("fill", function(d){
                     return choropleth(d.properties,colorScale);
-                });
+                })
+                .on("mouseover", function(d){
+                    highlight(d.properties);
+                })
+                .on("mouseout", function(d){
+                    dehighlight(d.properties);
+                })
+                .on("mousemove", moveLabel);
+        
+            //add style descriptor to each path
+            var desc = counties.append("desc")
+                .text('{"stroke": "#000", "stroke-width": "0.5px"}');
 
             //examine the reults
             //console.log(washingtonCounties);
@@ -259,4 +384,47 @@
             //console.log(csvData);
             //console.log(washington);
     };
+    
+    //function to create dynamic label
+    function setLabel(props){
+        //label content
+        var labelAttribute = "<h1>" + props[expressed] +
+            "</h1><b>" + expressed + "</b>";
+
+        //create info label div
+        var infolabel = d3.select("body")
+            .append("div")
+            .attr("class", "infolabel")
+            .attr("id", props.JURISDIC + "_label")
+            .html(labelAttribute);
+
+        var regionName = infolabel.append("div")
+            .attr("class", "labelname")
+            .html(props.name);
+    };
+    
+    //function to move info label with mouse
+    function moveLabel(){
+        //get width of label
+        var labelWidth = d3.select(".infolabel")
+            .node()
+            .getBoundingClientRect()
+            .width;
+        
+        //use coordinates of mousemove event to set label coordinates
+        var x1 = d3.event.clientX + 10,
+            y1 = d3.event.clientY - 75,
+            x2 = d3.event.clientX-labelWidth-10,
+            y2 = d3.event.clientY + 25;
+        
+        //horizontal label coordinate, testing for overflow
+        var x = d3.event.clientX > window.innerWidth - labelWidth - 20 ? x2 : x1; 
+        //vertical label coordinate, testing for overflow
+        var y = d3.event.clientY < 75 ? y2 : y1;
+
+        d3.select(".infolabel")
+            .style("left", x + "px")
+            .style("top", y + "px");
+    };
+    
 })();
